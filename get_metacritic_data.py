@@ -11,7 +11,7 @@ import csv
 import pandas as pd
 
 
-def write_metacritic_data_of_game_to_csv(game_name, platform="pc", filepath="metacritic_game_data_test.csv"):
+def write_metacritic_data_of_game_to_csv(game_name, platform="pc", filepath="metacritic_game_data.csv"):
     """
     Lese die Metacriticdaten eines Spiels auf einer Platform von der Metacriticurl aus und schreibe diese Daten sortiert
     in eine csv-Datei.
@@ -75,9 +75,10 @@ def write_metacritic_data_of_game_to_csv(game_name, platform="pc", filepath="met
         except KeyError:
             publisher_name_list = []
         game_info_dict["publisher"] = publisher_name_list
+        game_info_dict["platform"] = platform
 
         # Spiele-dict in csv Datei mit folgenden headern schreiben
-        csv_header = ["releasedate", "name", "metacritic", "user", "description", "genre", "rating", "publisher"]
+        csv_header = ["releasedate", "name", "metacritic", "user", "description", "genre", "rating", "publisher", "platform"]
         if not os.path.exists(filepath):  # Datei existiert noch nicht - header müssen noch zu erst geschrieben werden
             with open(filepath, mode="w+", newline="", encoding="utf-8") as csv_file:
                 writer = csv.DictWriter(csv_file, fieldnames=csv_header)
@@ -100,13 +101,16 @@ def read_metacritic_csv_data(file="metacritic_game_data.csv"):
     :return: DataFrame (gebildet aus der ausgelesenen Datei und nach Releasedatum und Publisher sortiert)
     """
     csv_df = pd.read_csv(file, parse_dates=[0])  # mit pandas auslesen und die Data als Daten auslesen
-    # pd.set_option("display.max_columns", None)
-    # print(csv_df.head())
     csv_df.sort_values(by=["releasedate", "publisher"], inplace=True)  # df nach releasedate und publisher sortiern
+
+    # transform genre & publisher data to lists
+    for index, row in csv_df.iterrows():
+        row["genre"] = str(row["genre"]).strip("][").replace("\'", "").split(", ")
+        row["publisher"] = str(row["publisher"]).strip("][").replace("\'", "").split(", ")
     return csv_df
 
 
-def get_games_from_metacritic_list(from_page=0, to_page=178):
+def get_games_from_metacritic_list(from_page=0, to_page=185):
     """
     Nimmt die Metacritic "all-time-best"-Liste (von/bis einer bestimmten Seite (0-178)), sammelt die Spieletitel und die
     Platform, auf der sie bewertet wurden und gibt davon einen DataFrame aus.
@@ -150,7 +154,7 @@ def get_a_lot_of_metacritic_data(games_df):
     return
 
 
-def get_all_games_df_of_one_publisher(publisher, from_file="metacritic_game_data_test.csv"):
+def get_all_games_df_of_one_publisher(publisher, from_file="metacritic_game_data.csv"):
     """
     Filtere aus den Metacriticdaten alle Spiele eines Publishers heraus.
     :param publisher: Name des Publishers
@@ -160,12 +164,14 @@ def get_all_games_df_of_one_publisher(publisher, from_file="metacritic_game_data
     full_df = read_metacritic_csv_data(from_file)
     full_df.sort_values(["publisher", "releasedate"], inplace=True)
 
-    columns = ["releasedate", "name", "metacritic", "user", "description", "genre", "rating", "publisher"]
+    columns = ["releasedate", "name", "metacritic", "user", "description", "genre", "rating", "publisher", "platform"]
     publisher_df = pd.DataFrame(None, columns=columns)
     for index, row in full_df.iterrows():
-        if type(row["publisher"]) == float:
-            pass
-        elif publisher in row["publisher"]:
+        # transform genre & publisher data to lists
+        row["genre"] = str(row["genre"]).strip("][").replace("\'", "").split(", ")
+        row["publisher"] = str(row["publisher"]).strip("][").replace("\'", "").split(", ")
+
+        if any(_x in row["publisher"] for _x in publisher):
             publisher_df = publisher_df.append(row, ignore_index=True)
     publisher_df.sort_values("releasedate", inplace=True)
     return publisher_df
@@ -177,7 +183,7 @@ def build_avg_of_games_on_different_platforms(games_df):
     :param games_df: DataFrame mit Spielen
     :return: reduzierten DataFrame, ohne Plattformdopplungen eines Spiels
     """
-    _columns = ["releasedate", "name", "metacritic", "user", "description", "genre", "rating", "publisher"]
+    _columns = ["releasedate", "name", "metacritic", "user", "description", "genre", "rating", "publisher", "platform"]
     hilf_df = pd.DataFrame(None, columns=_columns)
     clean_df = pd.DataFrame(None, columns=_columns)
 
@@ -202,5 +208,14 @@ def build_avg_of_games_on_different_platforms(games_df):
 
 
 if __name__ == "__main__":
-    df = get_games_from_metacritic_list()  # quasi alle Spiele, die es auf Metacritic gibt in einen df schreiben
-    get_a_lot_of_metacritic_data(df)  # alle Daten zu dem Spiele-df auf Metacritic in csv schreiben
+    # df = get_games_from_metacritic_list()  # quasi alle Spiele, die es auf Metacritic gibt in einen df schreiben
+    # df.to_csv("gamelist.csv")  # als csv abspeichern
+    #
+    # df = pd.read_csv("gamelist.csv")  # alle Spiele-csv laden
+    # get_a_lot_of_metacritic_data(df)  # metacritic infos zu den Spielen sammeln --> metacritic_game_data.csv
+
+    df = get_all_games_df_of_one_publisher(["Electronic Arts", "EA Sports", "EA Games"])
+    # df = build_avg_of_games_on_different_platforms(df)
+    # print(df["name"][:20], df["metacritic"][:20])
+    df_unique = df.drop_duplicates(["name"], keep="first")
+    print(df_unique)
